@@ -1,0 +1,195 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
+
+--// Local Player
+local localPlayer = Players.LocalPlayer
+
+--// =============================== CONFIGURATION ================================================
+local Config = {
+	NpcIgnoreKey = Enum.KeyCode.G,
+	GodModeKey = Enum.KeyCode.H,
+	NotificationDuration = 3 -- Seconds
+}
+
+--// =============================== UTILITY MODULES ==============================================
+
+--// On-Screen Notification Manager
+local NotificationManager = {}
+function NotificationManager.show(message)
+	if RunService:IsStudio() and not RunService:IsRunMode() then -- Don't run in studio edit mode
+		warn("Notification suppressed in Studio edit mode: " .. message)
+		return
+	end
+	
+	local playerGui = localPlayer:WaitForChild("PlayerGui")
+	
+	-- Create GUI elements
+	local screenGui = Instance.new("ScreenGui", playerGui)
+	screenGui.ResetOnSpawn = false
+	
+	local textLabel = Instance.new("TextLabel", screenGui)
+	textLabel.Size = UDim2.new(0.8, 0, 0.1, 0)
+	textLabel.Position = UDim2.new(0.1, 0, 0.8, 0)
+	textLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+	textLabel.BackgroundTransparency = 0.4
+	textLabel.TextColor3 = Color3.new(1, 1, 1)
+	textLabel.Font = Enum.Font.SourceSansBold
+	textLabel.TextSize = 20
+	textLabel.TextWrapped = true
+	textLabel.Text = message
+	
+	local textStroke = Instance.new("UIStroke", textLabel)
+	textStroke.Thickness = 1.5
+	textStroke.Color = Color3.new(0.1, 0.1, 0.1)
+	
+	-- Add a fade-out effect
+	task.wait(Config.NotificationDuration - 0.5)
+	for i = 1, 10 do
+		textLabel.TextTransparency = i / 10
+		textLabel.BackgroundTransparency = 0.4 + (i / 10 * 0.6)
+		textStroke.Transparency = i / 10
+		task.wait(0.05)
+	end
+	
+	Debris:AddItem(screenGui, 0) -- Use Debris for safe cleanup
+end
+
+--// NPC Ignore Logic Manager
+local NpcIgnoreManager = {
+	IsEnabled = false,
+	Character = nil,
+	StoredHRP = nil,
+	OriginalParent = nil
+}
+
+function NpcIgnoreManager:SetState(state)
+	if self.IsEnabled == state then return end
+	self.IsEnabled = state
+	
+	if not self.Character or not self.Character:IsDescendantOf(workspace) then
+		warn("Cannot toggle ignore: Character is invalid.")
+		self.IsEnabled = false
+		return
+	end
+
+	if self.IsEnabled then
+		local hrp = self.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then
+			warn("Failed to enable ignore: HumanoidRootPart not found.")
+			self.IsEnabled = false -- Revert state
+			return
+		end
+		
+		self.StoredHRP = hrp
+		self.OriginalParent = hrp.Parent
+		hrp.Parent = nil -- Parent to nil is more robust than parenting to Lighting
+		
+		NotificationManager.show("NPC Ignore: ENABLED")
+	else
+		if not self.StoredHRP or not self.OriginalParent or not self.OriginalParent:IsDescendantOf(workspace) then
+			warn("Could not disable ignore: Stored character parts are invalid.")
+			return
+		end
+		
+		self.StoredHRP.Parent = self.OriginalParent
+		self.StoredHRP = nil
+		self.OriginalParent = nil
+		
+		NotificationManager.show("NPC Ignore: DISABLED")
+	end
+end
+
+function NpcIgnoreManager:OnCharacterChanged(newCharacter)
+	-- Reset state if enabled on a previous character
+	if self.IsEnabled then
+		self:SetState(false)
+	end
+	self.Character = newCharacter
+end
+
+
+--// God Mode Logic Manager
+local GodModeManager = {
+	IsEnabled = false,
+	Character = nil,
+	Humanoid = nil,
+	HealthConnection = nil
+}
+
+function GodModeManager:_onHealthChanged()
+	-- Only act if god mode is on, the humanoid exists, and health is below max
+	if self.IsEnabled and self.Humanoid and self.Humanoid.Health < self.Humanoid.MaxHealth then
+		self.Humanoid.Health = self.Humanoid.MaxHealth
+	end
+end
+
+function GodModeManager:SetState(state)
+	if self.IsEnabled == state then return end
+	self.IsEnabled = state
+
+	if self.IsEnabled then
+		NotificationManager.show("God Mode: ACTIVATED")
+		-- Immediately top off health when enabled
+		if self.Humanoid then
+			self.Humanoid.Health = self.Humanoid.MaxHealth
+		end
+	else
+		NotificationManager.show("God Mode: DEACTIVATED")
+	end
+end
+
+function GodModeManager:OnCharacterChanged(newCharacter)
+	self.Character = newCharacter
+	self.Humanoid = newCharacter and newCharacter:FindFirstChildOfClass("Humanoid")
+	
+	-- Disconnect any previous connection to prevent memory leaks
+	if self.HealthConnection then
+		self.HealthConnection:Disconnect()
+		self.HealthConnection = nil
+	end
+	
+	-- If a new humanoid exists, create a new connection
+	if self.Humanoid then
+		self.HealthConnection = self.Humanoid.HealthChanged:Connect(function()
+			self:_onHealthChanged()
+		end)
+		
+		-- If god mode was already enabled, top off the new character's health
+		if self.IsEnabled then
+			self.Humanoid.Health = self.Humanoid.MaxHealth
+		end
+	end
+end
+
+
+--// =============================== INITIALIZATION ===============================================
+
+local function onCharacterAdded(character)
+	NpcIgnoreManager:OnCharacterChanged(character)
+	GodModeManager:OnCharacterChanged(character)
+end
+
+--// Input Handling
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	
+	if input.KeyCode == Config.NpcIgnoreKey then
+		NpcIgnoreManager:SetState(not NpcIgnoreManager.IsEnabled)
+	end
+	
+	if input.KeyCode == Config.GodModeKey then
+		GodModeManager:SetState(not GodModeManager.IsEnabled)
+	end
+end)
+
+--// Connect to character events
+if localPlayer.Character then
+	onCharacterAdded(localPlayer.Character)
+end
+localPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+print("Player Utility Suite (v4) Loaded.")
+print(" > Press [" .. Config.NpcIgnoreKey.Name .. "] to toggle NPC Ignore.")
+print(" > Press [" .. Config.GodModeKey.Name .. "] to toggle God Mode.")
