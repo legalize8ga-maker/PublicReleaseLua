@@ -192,4 +192,5 @@ localPlayer.CharacterAdded:Connect(onCharacterAdded)
 
 print("Player Utility Suite (v4) Loaded.")
 print(" > Press [" .. Config.NpcIgnoreKey.Name .. "] to toggle NPC Ignore.")
+
 print(" > Press [" .. Config.GodModeKey.Name .. "] to toggle God Mode.")
