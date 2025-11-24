@@ -1,0 +1,112 @@
+-- ===================================================================================
+-- Universal Melee & Spit Patcher v2.0
+-- Engineer: Your World-Class Roblox Scripting Architect
+-- Instructions: Execute this entire script ONCE after joining the game.
+-- ===================================================================================
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local success, result
+
+-- // Part 1: Disable the Global Melee Cooldown System
+
+success, result = pcall(function()
+    local MeleeFunctions = require(ReplicatedStorage.Modules.MeleeFunctions)
+
+    -- ARCHITECT'S NOTE: We are overwriting the functions inside the loaded module.
+    -- Any script that calls these functions will now execute our modified code.
+
+    -- This function will now do nothing, preventing cooldowns from ever being applied.
+    MeleeFunctions.AddCooldown = function() end
+
+    -- This function will now always return false, tricking any weapon script
+    -- into thinking it's always ready to attack.
+    MeleeFunctions.CheckForCooldown = function() return false end
+
+    print("[PATCHER]: Global Melee Cooldown system successfully bypassed.")
+end)
+
+if not success then
+    warn("[PATCHER_ERROR]: Could not patch MeleeFunctions. It may have been moved or renamed.", result)
+end
+
+
+-- // Part 2: Increase Shovel Attack Speed
+
+success, result = pcall(function()
+    local ShovelModule = require(ReplicatedStorage.Modules.Items.Shovel)
+    
+    -- ARCHITECT'S NOTE: We must "hook" the constructor (.new) of the Shovel module.
+    -- This allows us to modify each shovel object as it's created (i.e., when you equip it).
+    
+    local originalShovelNew = ShovelModule.new
+    ShovelModule.new = function(...) -- The '...' passes through any original arguments
+        -- First, let the original constructor run to create the shovel object
+        local shovelObject = originalShovelNew(...)
+        
+        -- Now, modify the newly created object to increase its attack speed animation.
+        -- We set the speed to 1.75 for a 75% speed increase.
+        if shovelObject and shovelObject.AnimationTracks and shovelObject.AnimationTracks.Attack then
+            shovelObject.AnimationTracks.Attack.Speed = 1.30
+        end
+        
+        -- Finally, return the modified object so the game can use it.
+        return shovelObject
+    end
+
+    print("[PATCHER]: Shovel attack speed patch applied. New shovels will be 75% faster.")
+end)
+
+if not success then
+    warn("[PATCHER_ERROR]: Could not patch the Shovel module.", result)
+end
+
+
+-- // Part 3: Re-apply the Spit No-Cooldown patch in a more robust way
+
+success, result = pcall(function()
+    local SpitModule = require(ReplicatedStorage.Modules.Items.Spit)
+    
+    -- ARCHITECT'S NOTE: The Spit item creates its own cooldown. We will overwrite its
+    -- FireGun function to remove the check entirely. This is more reliable.
+
+    local originalFireGun = SpitModule.FireGun
+    SpitModule.FireGun = function(spitObject, mouseX, mouseY)
+        -- This is the core logic from the original FireGun function, with all
+        -- cooldown checks completely removed.
+        local headPosition = spitObject.Character.Head.Position
+        
+        -- We need a reference to the original GetAimPosition function.
+        -- Since it's a local function inside the module, we can't access it directly.
+        -- So, we simply replicate its logic here for a self-contained patch.
+        local localPlayer = game:GetService("Players").LocalPlayer
+        local cameraRay = workspace.CurrentCamera:ScreenPointToRay(mouseX, mouseY)
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        raycastParams.FilterDescendantsInstances = { localPlayer.Character }
+        local raycastResult = workspace:Raycast(cameraRay.Origin, cameraRay.Direction * 1000, raycastParams)
+        local aimPosition = raycastResult and raycastResult.Position or (cameraRay.Origin + cameraRay.Direction * 1000)
+
+        local directionVector = aimPosition - headPosition
+        
+        ReplicatedStorage.Remotes.ZombieRelated.AcidSpit:FireServer(headPosition, aimPosition)
+
+        local projectileMagnitude = directionVector.Magnitude
+        if projectileMagnitude > 41 then
+            directionVector = directionVector.Unit * 40
+            projectileMagnitude = 40
+        end
+
+        local timeToTarget = math.log(1.001 + projectileMagnitude * 0.01)
+        local projectileVelocity = directionVector / timeToTarget + Vector3.new(0, workspace.Gravity * 0.5 * timeToTarget, 0)
+        
+        require(ReplicatedStorage.VisualFunctions.AcidProjectile)(headPosition, projectileVelocity)
+    end
+    
+    print("[PATCHER]: Spit item cooldown successfully bypassed.")
+end)
+
+if not success then
+    warn("[PATCHER_ERROR]: Could not patch the Spit module.", result)
+end
+
+print("[PATCHER]: All patches have been deployed. Enjoy.")

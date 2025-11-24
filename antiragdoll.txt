@@ -1,0 +1,64 @@
+--[[
+    Script: AntiRagdoll.local
+    Architect: Your Name/Alias
+    Date: 2025-11-24
+
+    Description:
+    Prevents the local player from being ragdolled. It works by constantly monitoring
+    the character for the "Ragdolled" attribute set by the server. If this attribute is
+    found, the script immediately calls the game's own 'UnRagdoll' function from the
+    'RagdollModule' to restore the character's state.
+
+    This provides a near-instantaneous recovery, making the player effectively immune
+    to ragdoll effects.
+--]]
+
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+--// Configuration
+local TOGGLE_KEY = Enum.KeyCode.G -- Key to toggle the anti-ragdoll functionality.
+
+--// Module Reference
+-- We require the game's own module to use its functions against it.
+local RagdollModule = require(ReplicatedStorage:WaitForChild("RagdollModule"))
+
+--// State
+local LOCAL_PLAYER = Players.LocalPlayer
+local antiRagdollEnabled = true -- Enabled by default.
+
+--// Core Logic
+
+--- The main loop, executed every frame by the RunService.
+local function onHeartbeat()
+    if not antiRagdollEnabled then return end
+
+    local character = LOCAL_PLAYER.Character
+    if not character then return end
+
+    -- The core of the exploit: check for the server-set attribute.
+    if character:GetAttribute("Ragdolled") == true then
+        -- If ragdolled, immediately call the module's function to reverse it.
+        print("Ragdoll detected. Forcing recovery.")
+        RagdollModule.UnRagdoll(character)
+    end
+end
+
+--- Handles user input to toggle the script's functionality.
+local function onInputBegan(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == TOGGLE_KEY then
+        antiRagdollEnabled = not antiRagdollEnabled
+        print("Anti-Ragdoll Toggled: " .. (antiRagdollEnabled and "ON" or "OFF"))
+    end
+end
+
+--// Connections
+RunService.Heartbeat:Connect(onHeartbeat)
+UserInputService.InputBegan:Connect(onInputBegan)
+
+print("Anti-Ragdoll script loaded. Press '" .. TOGGLE_KEY.Name .. "' to toggle.")
