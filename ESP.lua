@@ -12,7 +12,7 @@
 --//==================================================================================//--
 
 local Config = {
-    ToggleKey = Enum.KeyCode.F  -- The key to press to toggle the ESP on and off.
+    ToggleKey = Enum.KeyCode.L  -- The key to press to toggle the ESP on and off.
 }
 
 --//==================================================================================//--
